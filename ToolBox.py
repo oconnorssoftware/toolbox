@@ -1,3 +1,5 @@
+import json
+
 def dictdif(dicfrm,dicto):
   ddict={}
   frmkv=dicfrm.keys()
@@ -10,46 +12,33 @@ def dictdif(dicfrm,dicto):
   #ddict["vals"]=[x for x in toiv-frmiv]
   return ddict
 
-def findChildren(TopLevelGroupID = "",GroupID = "", nodes = []):#finds subgroups
-  nodes = nodes or []
-  if GroupExists(TopLevelGroupID,GroupID):
-    children = Objects.GROUP_COLLECTIONS[TopLevelGroupID].find({"Parent":GroupID})
-    for child in children:
-      nodes.append(child)
-      findChildren(TopLevelGroupID=TopLevelGroupID, GroupID=child['_id'], nodes=nodes)
-    return nodes
-  else:
-    LOGGER.error("findChildren failed - TopLevelGroup:{} or SubGroup:{} does not exist".format(TopLevelGroupID,GroupID))
-    return False
-
-def findLeaves(TopLevelGroupID,GroupIDs):
-  retList = []
-  for GroupID in GroupIDs:
-    if not GroupExists(TopLevelGroupID,GroupID):
-      LOGGER.error("findLeaves failed - TopLevelGroup:{} or SubGroup:{} does not exist".format(TopLevelGroupID,GroupID))
-      return False
-    retList += list(Objects.NEW_USER_COLLECTION[TopLevelGroupID].find({"GroupID":GroupID}))
-  return retList
-
-def GetTree(TopLevelGroupID = "", GroupID = ""):
-  try:
-    if not TopLevelGroupExists(TopLevelGroupID):
-      LOGGER.error("UserAPI.GetFullTree({}) - failed due to TopLevelGroup not existing".format(TopLevelGroupID))
-      return False
-    parent = Objects.GROUP_COLLECTIONS[TopLevelGroupID].find_one({'_id':GroupID})
-    branches = findChildren(TopLevelGroupID = TopLevelGroupID, GroupID = GroupID)
-    branches.append(parent)
-    GroupIDsToFetchUsersFor = [x['_id'] for x in branches]
-    leaves = findLeaves(TopLevelGroupID,GroupIDsToFetchUsersFor)
-    leavesAndBranches = branches + leaves
-    tree = treeify(nodeList = leavesAndBranches, parent = None)
-    return tree
-  except:
-    LOGGER.error("UserAPI.GetFullTree({}) - failed".format(TopLevelGroupID))
-    return False
-
 def treeify(nodeList = [],parent = ""):
-
+  '''
+    takes list of nodes (dictionaries) of a tree and turns them into
+    a JSONish tree.
+    nodeList = [
+      {#branch
+        "Parent":"",
+        "BranchID":"abc123",
+        "BranchName":"This is the root node"
+      },
+      {#leaf
+        "LeafName":SomeUser,
+        "BranchID":"abc123",
+        "_id":"someUserID"
+      },
+      {#branch
+        "Parent":"abc123",
+        "BranchID":"abc124",
+        "BranchName":"This is the sub node"      
+      },
+      {#leaf
+        "LeafName":SomeOtherUser,
+        "BranchID":"abc124",
+        "_id":"someUserID2"
+      },
+    ]
+  '''
   #listOfparents
   tmpList = []
   for node in nodeList:
@@ -57,20 +46,47 @@ def treeify(nodeList = [],parent = ""):
       if node['Parent'] == parent:
         #this removes the branch we are about to add and walk from being checked again.
         #we do the 'or "UserName" in x' because we want the leaf nodes to not get kicked out.
-        newnodeList = [x for x in nodeList if x["GroupID"] != node['GroupID'] or "UserName" in x]
+        newnodeList = [x for x in nodeList if x["BranchID"] != node['BranchID'] or "LeafName" in x]
         tmpList.append({
-            "text":node["GroupName"],
-            "userID":node['GroupID'],
+            "text":node["BranchName"],
+            "userID":node['BranchID'],
             "group":True,
             "leaf":False,
-            "children":treeify(newnodeList,node["GroupID"])
+            "children":treeify(newnodeList,node["BranchID"])
           })
-    elif "UserName" in node:#then this is a user (leaf)   
-      if node['GroupID'] == parent:
+    elif "LeafName" in node:#then this is a user (leaf)   
+      if node['BranchID'] == parent:
         tmpList.append({
-            "text":node["UserName"],
+            "text":node["LeafName"],
             "userID":node["_id"],
             "leaf":True,
             "group":False
           })
   return tmpList
+
+if __name__ == '__main__':
+  nodeList = [
+      {#branch
+        "Parent":"",
+        "BranchID":"abc123",
+        "BranchName":"This is the root node"
+      },
+      {#leaf
+        "LeafName":"SomeUser",
+        "BranchID":"abc123",
+        "_id":"someUserID"
+      },
+      {#branch
+        "Parent":"abc123",
+        "BranchID":"abc124",
+        "BranchName":"This is the sub node"      
+      },
+      {#leaf
+        "LeafName":"SomeOtherUser",
+        "BranchID":"abc124",
+        "_id":"someUserID2"
+      },
+    ]
+  print(treeify(nodeList))
+
+  
